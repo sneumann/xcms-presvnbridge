@@ -110,6 +110,34 @@ rampRawData <- function(rampid) {
                 polarity = scanHeaders$polarity[scans]))
 }
 
+mzRRawData <- function(mz) {
+  ## TODO: missing in mzR are:
+  ## seqNum
+  ## scanType
+  ## polarity
+  
+    scanHeaders <- header(mz)
+
+    scans <- scanHeaders$msLevel == 1 & scanHeaders$seqNum > 0 &
+             !duplicated(scanHeaders$acquisitionNum) &
+             scanHeaders$peaksCount > 0
+
+    scans <- which(scans)
+
+    scanlist <- mzR::peaks(mz, scan=scans)
+    sipeaks <- do.call(rbind, scanlist)
+    scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
+    
+
+    return(list(rt = scanHeaders$retentionTime[scans],
+                acquisitionNum = scanHeaders$acquisitionNum[scans],
+                tic = scanHeaders$totIonCurrent[scans],
+                scanindex = scanIndex,
+                mz = sipeaks[,1],
+                intensity = sipeaks[,2],
+                polarity = scanHeaders$polarity[scans]))
+}
+
 rampRawDataMSn <- function(rampid) {
 
     # Check if we have MSn at all

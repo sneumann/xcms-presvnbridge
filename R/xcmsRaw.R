@@ -17,19 +17,27 @@ xcmsRaw <- function(filename, profstep = 1, profmethod = "bin",
             stop(attr(cdf, "errortext"))
         on.exit(netCDFClose(cdf))
         rawdata <- netCDFRawData(cdf)
-    } else if (rampIsFile(filename)) {
-        rampid <- rampOpen(filename)
-        if (rampid < 0)
-            stop("Couldn't open mzXML/mzData file")
-        on.exit(rampClose(rampid))
-        rawdata <- rampRawData(rampid)
+    } else {
+      mz <- openMSfile(filename)
+      rawdata <- mzRRawData(mz)
+##       if ( includeMSn ) {
+##         rawdataMSn <- mzRRawDataMSn(mz)
+##       }
+    }
 
-        if ( includeMSn ) {
-            rawdataMSn <- rampRawDataMSn(rampid)
-        }
+## if (rampIsFile(filename)) {      
+##       rampid <- rampOpen(filename)
+##         if (rampid < 0)
+##             stop("Couldn't open mzXML/mzData file")
+##         on.exit(rampClose(rampid))
+##         rawdata <- rampRawData(rampid)
 
-    } else
-        stop("Couldn't determine file type")
+##         if ( includeMSn ) {
+##             rawdataMSn <- rampRawDataMSn(rampid)
+##         }
+
+##     } else
+##         stop("Couldn't determine file type")
 
     rtdiff <- diff(rawdata$rt)
     if (any(rtdiff == 0))
