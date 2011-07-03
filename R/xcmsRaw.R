@@ -20,9 +20,9 @@ xcmsRaw <- function(filename, profstep = 1, profmethod = "bin",
     } else {
       mz <- openMSfile(filename)
       rawdata <- mzRRawData(mz)
-##       if ( includeMSn ) {
-##         rawdataMSn <- mzRRawDataMSn(mz)
-##       }
+      if ( includeMSn ) {
+        rawdataMSn <- mzRRawDataMSn(mz)
+      }
     }
 
 ## if (rampIsFile(filename)) {      

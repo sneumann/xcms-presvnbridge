@@ -125,9 +125,15 @@ mzRRawData <- function(mz) {
     scans <- which(scans)
 
     scanlist <- mzR::peaks(mz, scan=scans)
-    sipeaks <- do.call(rbind, scanlist)
-    scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
-    
+    if (class(scanlist) == "list")  {
+      ## concatenate multiple scans 
+      sipeaks <- do.call(rbind, scanlist)
+      scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
+    } else {
+      ## no reshaping required
+      sipeaks <- scanlist
+      scanIndex <- as.integer(0, nrow(sipeaks))
+    }        
 
     return(list(rt = scanHeaders$retentionTime[scans],
                 acquisitionNum = scanHeaders$acquisitionNum[scans],
@@ -136,6 +142,52 @@ mzRRawData <- function(mz) {
                 mz = sipeaks[,1],
                 intensity = sipeaks[,2],
                 polarity = scanHeaders$polarity[scans]))
+}
+
+mzRRawDataMSn <- function(mz) {
+  ## TODO: missing in mzR are:
+  ## seqNum
+  ## scanType
+  ## polarity
+  
+    scanHeaders <- header(mz)
+
+    # Check if we have MSn at all
+    if (max(scanHeaders[,"msLevel"]) < 2) {
+        warning("MSn spectra requested but not found")
+        return (NULL);
+    }
+
+    ## Some of these checks work around buggy RAMP indexing code
+    scans <- scanHeaders$msLevel >= 2 & scanHeaders$seqNum > 0 &
+             !duplicated(scanHeaders$acquisitionNum) &
+             scanHeaders$peaksCount > 0
+
+    scans <- which(scans)
+
+    scanlist <- mzR::peaks(mz, scan=scans)
+    sipeaks <- do.call(rbind, scanlist)
+    scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
+
+##        sipeaks <- rampSIPeaks(rampid, scans, scanHeaders$peaksCount[scans])
+
+    retdata <- list(rt = scanHeaders$retentionTime[scans],
+                    acquisitionNum = scanHeaders$acquisitionNum[scans],
+                    tic = scanHeaders$totIonCurrent[scans],
+                    precursorNum=scanHeaders$precursorScanNum[scans],
+                    precursorMZ = scanHeaders$precursorMZ[scans],
+                    precursorIntensity = scanHeaders$precursorIntensity[scans],
+                    peaksCount=scanHeaders$peaksCount[scans],
+                    msLevel = scanHeaders$msLevel[scans],
+                    precursorCharge = scanHeaders$precursorCharge[scans],
+                    scanindex = scanIndex,
+                    polarity = scanHeaders$polarity[scans],
+                    collisionEnergy = scanHeaders$collisionEnergy[scans],
+                    mz = sipeaks[,1],
+                    intensity = sipeaks[,2]);
+
+    return(retdata)
+
 }
 
 rampRawDataMSn <- function(rampid) {
