@@ -124,7 +124,7 @@ mzRRawData <- function(mz) {
 
     scans <- which(scans)
 
-    scanlist <- mzR::peaks(mz, scan=scans)
+    scanlist <- mzR::peaks(mz, scans=scans)
     if (class(scanlist) == "list")  {
       ## concatenate multiple scans 
       sipeaks <- do.call(rbind, scanlist)
@@ -165,7 +165,7 @@ mzRRawDataMSn <- function(mz) {
 
     scans <- which(scans)
 
-    scanlist <- mzR::peaks(mz, scan=scans)
+    scanlist <- mzR::peaks(mz, scans=scans)
     sipeaks <- do.call(rbind, scanlist)
     scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
 
