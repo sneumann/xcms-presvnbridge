@@ -7,23 +7,12 @@ xcmsRaw <- function(filename, profstep = 1, profmethod = "bin",
     object@env <- new.env(parent=.GlobalEnv)
 
     if (!file.exists(filename)) stop("File ",filename, " not exists. \n"   )
-    if (netCDFIsFile(filename)) {
-        if (includeMSn) {
-            warning("Reading of MSn spectra for NetCDF not supported")
-        }
 
-        cdf <- netCDFOpen(filename)
-        if (!is.null(attr(cdf, "errortext")))
-            stop(attr(cdf, "errortext"))
-        on.exit(netCDFClose(cdf))
-        rawdata <- netCDFRawData(cdf)
-    } else {
-      mz <- openMSfile(filename)
-      rawdata <- mzRRawData(mz)
-      if ( includeMSn ) {
-        rawdataMSn <- mzRRawDataMSn(mz)
-      }
-    }
+    mz <- openMSfile(filename)
+    rawdata <- mzRRawData(mz)
+    if ( includeMSn ) {
+      rawdataMSn <- mzRRawDataMSn(mz)
+    }    
 
 ## if (rampIsFile(filename)) {      
 ##       rampid <- rampOpen(filename)
