@@ -128,11 +128,11 @@ mzRRawData <- function(mz) {
     if (class(scanlist) == "list")  {
       ## concatenate multiple scans 
       sipeaks <- do.call(rbind, scanlist)
-      scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
+      scanIndex <- as.integer(c(0, cumsum(sapply(scanlist[-length(scanlist)], nrow))))
     } else {
       ## no reshaping required
       sipeaks <- scanlist
-      scanIndex <- as.integer(0, nrow(sipeaks))
+      scanIndex <- as.integer(0) #, nrow(sipeaks))
     }        
 
     return(list(rt = scanHeaders$retentionTime[scans],
@@ -167,7 +167,7 @@ mzRRawDataMSn <- function(mz) {
 
     scanlist <- mzR::peaks(mz, scans=scans)
     sipeaks <- do.call(rbind, scanlist)
-    scanIndex <- as.integer(c(0, cumsum(sapply(scanlist, nrow))))
+    scanIndex <- as.integer(c(0, cumsum(sapply(scanlist[-length(scanlist)], nrow))))
 
 ##        sipeaks <- rampSIPeaks(rampid, scans, scanHeaders$peaksCount[scans])
 
