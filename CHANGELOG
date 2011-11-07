@@ -1,3 +1,35 @@
+2011-10-04 1.28.1
+Added warnings and recovery for silent errors from stitch.netcdf that happen when there are few lock mass scans.
+
+2011-09-30 1.28.0
+The massifquant plug-in has been integrated into the finding features options.
+
+2011-09-21 1.27.8
+Fixed getMsnScan(), which was present twice. The (for now) disabled variant 
+in xcmsRaw.R:getMsnScan() has some heuristics to match MS2 to MS1, 
+but AFAICS never really worked in the general case 
+("Error in .local(object, ...) : object 'msn' not found")
+and wasn't exported anyway.
+
+2011-09-19 1.27.7
+Added stitch method for netCDF files which require special code. Made a parent stitch function
+and allowed stitch to be called automatically with parallel code.
+
+2011-09-22 1.27.6
+fillPeaks/getPeaks: fixed rare bug when weighted.mean could not be calculated
+xcmsSet(): catch empty peaklist (NULL) and give warning
+retcor.peakgroups: fixed rare bug when rector correction loop does not converge
+removed quotes in some error strings, which cause problems when error messages are imported into DB
+
+2011-07-13 1.27.4
+Added new method to automatically find Lock mass parameters
+Made lock mass correction work with nSlaves :)
+
+2011-07-06 1.27.3
+Increased the speed of stitch function 10-50x faster.
+Removed xcms2 functions and documentation
+re-enable Win 64bit builds
+
 2011-03-29: 1.25.6
 retcor.obiwarp: Fixed problems with retcor.obiwarp when profile matrices have different m/z ranges
 by calculating the profile matrix with whole-number limits (profStepPad) 

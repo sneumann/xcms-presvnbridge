@@ -1,6 +1,6 @@
 xcmsSet <- function(files = NULL, snames = NULL, sclass = NULL, phenoData = NULL,
                     profmethod = "bin", profparam = list(),
-                    polarity = NULL, lockMassFreq=FALSE, start=0,
+                    polarity = NULL, lockMassFreq=FALSE, 
 					mslevel=NULL, nSlaves=0, progressCallback=NULL,...) {
 
     object <- new("xcmsSet")
@@ -130,6 +130,7 @@ xcmsSet <- function(files = NULL, snames = NULL, sclass = NULL, phenoData = NULL
         params$profparam <- profparam;
         params$includeMSn <- includeMSn;
         params$mslevel <- mslevel;
+		params$lockMassFreq <- lockMassFreq;
         
         ft <- cbind(file=files,id=1:length(files))
         argList <- apply(ft,1,function(x) list(file=x["file"],id=as.numeric(x["id"]),params=params))
@@ -146,7 +147,10 @@ xcmsSet <- function(files = NULL, snames = NULL, sclass = NULL, phenoData = NULL
 
         peaklist <- lapply(res, function(x) x$peaks)
         rtlist$raw <-  rtlist$corrected <-  lapply(res, function(x) x$scantime)
-
+		if(lockMassFreq){
+			object@dataCorrection[1:length(files)]<-1
+		}
+		
     } else {
 
       peaklist <- vector("list", length(files))
@@ -159,9 +163,8 @@ xcmsSet <- function(files = NULL, snames = NULL, sclass = NULL, phenoData = NULL
                           profstep = 0, includeMSn=includeMSn, mslevel=mslevel)
 	## check existence of slot, absent in old xcmsSets
 		if(lockMassFreq){
-			lockmass<-makeacqNum(lcraw, lockMassFreq, start)
-			object@dataCorrection<-lockmass
-			lcraw<-stitch(lcraw, lockmass)
+			object@dataCorrection[i]<-1
+			lcraw<-stitch(lcraw, AutoLockMass(lcraw))
 		}
         
        # if (exists("object@polarity") && length(object@polarity) >0) {
@@ -181,12 +184,14 @@ xcmsSet <- function(files = NULL, snames = NULL, sclass = NULL, phenoData = NULL
     }
 
     lapply(1:length(peaklist), function(i) {
-              if (nrow(peaklist[[i]]) == 0)
-              warning("No peaks found in sample ", snames[i], call. = FALSE)
-          else if (nrow(peaklist[[i]]) == 1)
-              warning("Only 1 peak found in sample ", snames[i], call. = FALSE)
-          else if (nrow(peaklist[[i]]) < 10)
-              warning("Only ", nrow(peaklist[[i]]), " peaks found in sample", 
+            if (is.null(peaklist[[i]]))
+              warning("No peaks found in sample ", snames[i], call. = FALSE)  
+                else  if (nrow(peaklist[[i]]) == 0)
+                    warning("No peaks found in sample ", snames[i], call. = FALSE)
+                else if (nrow(peaklist[[i]]) == 1)
+                    warning("Only 1 peak found in sample ", snames[i], call. = FALSE)
+                else if (nrow(peaklist[[i]]) < 10)
+                    warning("Only ", nrow(peaklist[[i]]), " peaks found in sample", 
                       snames[i], call. = FALSE)
                     })
 
@@ -641,6 +646,7 @@ setMethod("group.density", "xcmsSet", function(object, bw = 30, minfrac = 0.5, m
     # Remove groups that overlap with more "well-behaved" groups
     numsamp <- rowSums(groupmat[,(match("npeaks", colnames(groupmat))+1):ncol(groupmat),drop=FALSE])
     uorder <- order(-numsamp, groupmat[,"npeaks"])
+    
     uindex <- rectUnique(groupmat[,c("mzmin","mzmax","rtmin","rtmax"),drop=FALSE],
                          uorder)
 
@@ -988,7 +994,7 @@ setMethod("retcor.peakgroups", "xcmsSet", function(object, missing = 1, extra = 
         if (smooth == "loess") {
             lo <- suppressWarnings(loess(rtdev ~ rt, pts, span = span, degree = 1, family = family))
 
-            rtdevsmo[[i]] <- na.flatfill(predict(lo, data.frame(rt = rtcor[[i]])))
+            rtdevsmo[[i]] <- xcms:::na.flatfill(predict(lo, data.frame(rt = rtcor[[i]])))
             ### Remove singularities from the loess function
             rtdevsmo[[i]][abs(rtdevsmo[[i]]) > quantile(abs(rtdevsmo[[i]]), 0.9)*2] <- NA
 
@@ -998,6 +1004,8 @@ setMethod("retcor.peakgroups", "xcmsSet", function(object, missing = 1, extra = 
             while (length(decidx <- which(diff(rtcor[[i]] - rtdevsmo[[i]]) < 0))) {
                 d <- diff(rtcor[[i]] - rtdevsmo[[i]])[tail(decidx, 1)]
                 rtdevsmo[[i]][tail(decidx, 1)] <- rtdevsmo[[i]][tail(decidx, 1)] - d
+                if (abs(d) <= 1e-06)
+                    break;
             }
 
             rtdevsmorange <- range(rtdevsmo[[i]])
@@ -1430,8 +1438,9 @@ setMethod("fillPeaks.chrom", "xcmsSet", function(object) {
         naidx <- which(is.na(gvals[,i]))
         if (length(naidx)) {
             lcraw <- xcmsRaw(files[i], profmethod = prof$method, profstep = 0)
-			if(length(object@dataCorrection) > 0){
-				lcraw<-stitch(lcraw, object@dataCorrection)
+			if(length(object@dataCorrection) > 1){
+				if(object@dataCorrection[i] == 1)
+					lcraw<-stitch(lcraw, AutoLockMass(lcraw))
 			}
 	    ## check existence of slot, absent in old xcmsSets
 	   # if (exists("object@polarity") && length(object@polarity) >0) {
@@ -1616,7 +1625,8 @@ setMethod("getEIC", "xcmsSet", function(object, mzrange, rtrange = 200,
         flush.console()
         lcraw <- xcmsRaw(files[sampidx[i]], profmethod = prof$method, profstep = 0)
 		if(length(object@dataCorrection) > 1){
-			lcraw<-stitch(lcraw, object@dataCorrection)
+			if(object@dataCorrection[i] == 1)
+				lcraw<-stitch(lcraw, AutoLockMass(lcraw))
 		}
         if (rt == "corrected")
             lcraw@scantime <- object@rt$corrected[[sampidx[i]]]
@@ -2000,27 +2010,3 @@ panel.cor <- function(x, y, digits=2, prefix="", cex.cor)
     if(missing(cex.cor)) cex <- 0.8/strwidth(txt)
     text(0.5, 0.5, txt, cex = cex)
 }
-
-setGeneric("peakPlots", function(object,mzrange, rtrange, density=c(TRUE, FALSE), ...) standardGeneric("peakPlots"))
-
-setMethod("peakPlots", "xcmsSet", function(object, mzrange, rtrange, density=c(TRUE, FALSE), ...){
-
-	colFiles<-rainbow(length(object@filepaths))
-	idmz<-which(object@peaks[,"mz"]< max(mzrange) & object@peaks[,"mz"] > min(mzrange))
-	idrt<-which(object@peaks[idmz,"rt"]< max(rtrange) & object@peaks[idmz,"rt"] > min(rtrange))
-	title<-paste("Detected features for mz:", mzrange[1], "-", mzrange[2],
-		"and rt:", rtrange[1], "-", rtrange[2], sep="")
-	plot(object@peaks[idmz,c("rt","mz")][idrt,], type="n", main=title, xlab="Retention time (sec)",
-		ylim=mzrange, xlim=rtrange, ...)
-	##Make a pilot plot for dimentions
-		
-	for (i in 1:nrow(object@phenoData)){
-		idx<-which(object@peaks[, "sample"] == i)
-		points(object@peaks[idx, c("rt", "mz")], col=colFiles[i])
-##plot the actual data points in each colour for each sample number
-	}
-	if(density==TRUE){
-		dev.new()
-		plot(density(object@peaks[idmz,"rt"][idrt]))
-	}
-})

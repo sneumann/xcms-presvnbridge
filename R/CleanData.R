@@ -1,3 +1,50 @@
+setGeneric("AutoLockMass", function(object) standardGeneric("AutoLockMass"))
+
+setMethod("AutoLockMass", "xcmsRaw", function(object) {
+	if(length(grep("xml|mzData|mzXML|mzML", object@filepath, ignore.case=TRUE)) >= 1){
+		tempFreq<-diff(which(diff(object@scantime) == 0))-1
+		if(all(tempFreq == mean(tempFreq)) ){
+			freqLock<-mean(tempFreq)
+		}else{
+			freqLock<-mean(tempFreq)
+			warning("\nLock mass frequency wasn't detected correctly", immediate.=TRUE)
+		}
+
+		if(diff(object@scantime[1:5])[1] == 0 ){
+			start<-1
+		}else{
+			start<-freqLock
+		}
+		return(makeacqNum(object, freqLock, start))
+		
+	} else if(length(grep("cdf", object@filepath, ignore.case=TRUE)) >= 1){
+		hr <- hist(diff(object@scantime), plot=FALSE)
+		idx<- hr$breaks[which(hr$counts > 0)]
+		inx<- which(diff(object@scantime) > idx[2])
+		if(length(inx) <= 1){
+			warning("\nLock mass frequency wasn't detected", immediate.=TRUE)
+			return(0)
+		}
+		
+		tempFreq<-diff(inx)-1
+		if(all(tempFreq == mean(tempFreq)) ){
+			freqLock<-mean(tempFreq)
+		}else{
+			freqLock<-mean(tempFreq)
+			warning("Lock mass frequency wasn't detected correctly\n", immediate.=TRUE)
+		}
+		
+		if(inx[1] == 0 | inx[1] == 1){
+			start<-1
+		}else{
+			start<-freqLock
+		}
+		#return(inx)
+		return(makeacqNum(object, freqLock, start))
+	} else{
+		stop("Couldn't detect file type\n")
+	}
+})
 
 setGeneric("makeacqNum", function(object, freq, start=1) standardGeneric("makeacqNum"))
 
@@ -14,95 +61,168 @@ setMethod("makeacqNum", "xcmsRaw", function(object, freq, start=1) {
 })
 
 
-setGeneric("stitch", function(object, lockMass) standardGeneric("stitch"))
+setGeneric("stitch", function(object, lockMass, ...) standardGeneric("stitch"))
 
 setMethod("stitch", "xcmsRaw", function(object, lockMass) {
-		require(stats)
-		if(file.exists("mz.txt")){
-			unlink("mz.txt")
-		}
-		if(file.exists("intensity.txt")){
-			unlink("intensity.txt")
-		}
+	if(length(grep("xml|mzData", object@filepath, ignore.case=TRUE)) >= 1){
+		type<-stitch.xml
+	} else if(length(grep("cdf", object@filepath, ignore.case=TRUE)) >= 1){
+		type<-stitch.netCDF
+	} else{
+		stop("Unknown stitch method \n")
+	}
 
-		hold<-0
-		opps<-0
-		scanindex<-list()
-
-		for(i in 1:length(object@acquisitionNum)){
-			percent<-(i/length(object@acquisitionNum))*100
-			#cat(paste(round(percent), "%\r"))
-			if( i == 1 || i == 2 ){ 
-				scan<-getScan(object, i)
-				cat(scan[,"mz"], " ", append=TRUE, file="mz.txt")
-				cat(scan[,"intensity"], " ", append=TRUE, file="intensity.txt")
-				next # since lock mass is 1 & 2 there is no gap to fill :)
-			}else if(i == (hold+1)){ 
-				next 
-			}else if(all(lockMass != i ) || i >= (length(object@acquisitionNum) - 2) ){
-				#Get all the other scans into the text file as well
-				scan<-getScan(object, i)
-				cat(scan[,"mz"], " ", append=TRUE, file="mz.txt")
-				cat(scan[,"intensity"], " ", append=TRUE, file="intensity.txt")
-				next
-			}else if(any(lockMass == i)){
-				hold<-i
-				cat(paste(basename(object@filepath), " :\t", round(percent), "%\r"))
-
-				scan<-getScan(object, i-1)
-				scanB<-getScan(object, i+2)
-				cat(scan[,"intensity"], " ", scanB[,"intensity"], " ", append=TRUE, file="intensity.txt")
-				cat(scan[,"mz"], " ", scanB[,"mz"], " ",append=TRUE, file="mz.txt")
-				##Fill the gap with the scan before and jsut after lock Mass scans 
-			}
-		}
-		cat("\n")
-
-		##Now all loops are finished we can add the mz.txt and Intensity.txt 
-		##to the object and make the scanindex :)
-		gc()
-		if(file.exists("mz.txt") && file.exists("intensity.txt")){
-			#cat(paste("Reading m/z & intensity Vectors...\n", sep=""))
-			mz<-scan("mz.txt", what="numeric")
-			intensity<-scan("intensity.txt", what="numeric")
-		}else{
-			stop("ERROR: Hard Drive error - m/z and Intensity Vectors not found\n")
-		}
-		mz<-as.numeric(mz)
-		intensity<-as.numeric(intensity)
-
-		scanIdx<-0
-		for(k in 1:length(mz)){
-			if( (k+2) == (length(mz))){
-				break
-			} else if(mz[k+1] > mz[k]){
-				#cat(k, " <-k \n")
-				if(mz[k+2] < mz[k+1] && mz[k] < mz[k+2]){
-					stop("Error at ", k, " : value greater than element k\n")
-				}else{
-					next
-				}
-			}else if(mz[k+1] < mz[k]){
-				scanIdx<-c(scanIdx, k)
-	#			cat("N--> ",n," <--N \n")
-			}
-		}
-		
-		ob<-new("xcmsRaw")
-		ob@scanindex<-as.integer(scanIdx)
-		ob@env$mz<-mz
-		ob@env$intensity<-intensity
-		ob@acquisitionNum<-1:length(scanIdx)
-		ob@filepath<-object@filepath
-		ob@mzrange<-range(mz)
-		ob@profmethod<-object@profmethod
-		ob@tic<-object@tic
-		ob@scantime<-object@scantime
-		ob@profparam<-list()
-		
-		rm(object,scanIdx, mz, intensity)
-		gc()
-		cat("\n")
-		return(ob)
+	invisible(do.call(type, list(object, lockMass)))
 })
 
+setGeneric("stitch.xml", function(object, lockMass) standardGeneric("stitch.xml"))
+
+setMethod("stitch.xml", "xcmsRaw", function(object, lockMass) {
+	
+	ob<-new("xcmsRaw")
+	ob@env$mz<-object@env$mz
+	ob@env$intensity<-object@env$intensity
+	ob@scanindex<-object@scanindex
+	ob@scantime<-object@scantime
+
+	ob@acquisitionNum<-1:length(ob@scanindex)
+	ob@filepath<-object@filepath
+	ob@mzrange<-range(ob@env$mz)
+	ob@profmethod<-object@profmethod
+	ob@tic<-object@tic
+	ob@profparam<-list()
+
+	arr<-array(dim=c(2,max(diff(ob@scanindex)), length(ob@scanindex)))
+	if(lockMass[1] == 1){
+		lockMass<-lockMass[3:length(lockMass)]
+	}
+	lockMass<-matrix(lockMass, ncol=2, byrow=TRUE)
+	if((lockMass[nrow(lockMass),2]+2) > length(ob@scanindex)){
+		lockMass<-lockMass[1:(nrow(lockMass)-1),]
+	}
+
+	for(i in 1:(length(ob@scanindex)-1)){
+		if(any(i == lockMass[,1])){
+			arr[1,,i] <-c(object@env$mz[(object@scanindex[(i-1)]+1):object@scanindex[i]], 
+				rep(NA, (max(diff(object@scanindex))-
+				length((object@scanindex[(i-1)]+1):object@scanindex[i])) ))
+
+			arr[2,,i] <-c(object@env$intensity[(object@scanindex[(i-1)]+1):object@scanindex[i]], 
+					rep(NA, (max(diff(object@scanindex)) - 
+					length((object@scanindex[(i-1)]+1):object@scanindex[i])) ))
+
+		} else if(any(i == lockMass[,2])){
+			arr[1,,i] <-c(object@env$mz[(object@scanindex[i+1]+1):object@scanindex[(i+2)]], 
+				rep(NA, (max(diff(object@scanindex)) - 
+				length((object@scanindex[i+1]+1):object@scanindex[(i+2)])) ))
+
+			arr[2,,i] <-c(object@env$intensity[(object@scanindex[i+1]+1):object@scanindex[(i+2)]], 
+					rep(NA, (max(diff(object@scanindex)) - 
+					length((object@scanindex[i+1]+1):object@scanindex[(i+2)])) ))
+
+		} else{
+			arr[1,,i] <-c(object@env$mz[(object@scanindex[i]+1):object@scanindex[i+1]], 
+				rep(NA, (max(diff(object@scanindex))-
+				length((object@scanindex[i]+1):object@scanindex[i+1])) ))
+
+			arr[2,,i] <-c(object@env$intensity[(object@scanindex[i]+1):object@scanindex[i+1]], 
+				rep(NA, (max(diff(object@scanindex)) - 
+				length((object@scanindex[i]+1):object@scanindex[i+1])) ))
+		}
+		## mz is in 1; Intensity is in 2
+		##remake scanindex
+		if(i == 1){
+			ob@scanindex[i]<-as.integer(0)
+
+		}else if(i == length(ob@scanindex)-1){
+			ob@scanindex[i]<-as.integer(length(na.omit(arr[1,,(i-1)]))+ob@scanindex[(i-1)])
+			ob@scanindex[i+1]<-as.integer(length(na.omit(arr[1,,i]))+ob@scanindex[i])
+#			ob@scanindex[i+1]<-as.integer(length(ob@env$mz))
+		}else{
+			ob@scanindex[i]<-as.integer(length(na.omit(arr[1,,(i-1)]))+ob@scanindex[(i-1)])
+		}
+	}
+
+	NAidx<-is.na(arr[1,,])
+	ob@env$mz<-as.numeric(arr[1,,][!NAidx])
+	ob@env$intensity<-as.numeric(arr[2,,][!NAidx])
+
+	return(ob)
+})
+
+setGeneric("stitch.netCDF", function(object, lockMass) standardGeneric("stitch.netCDF"))
+
+setMethod("stitch.netCDF", "xcmsRaw", function(object, lockMass) {
+	if(length(lockMass) == 0 | all(lockMass == 0)){
+		return(object)
+	}
+	
+	ob<-new("xcmsRaw")
+
+	ob@filepath<-object@filepath
+	ob@mzrange<-range(ob@env$mz)
+	ob@profmethod<-object@profmethod
+	ob@profparam<-list()
+
+	arr<-array(dim=c(2,max(diff(object@scanindex)), (length(object@scanindex)+length(lockMass)) ))
+	ob@scanindex <- integer(length=length(arr[1,1,]))
+	ob@acquisitionNum<-1:length(ob@scanindex)
+	
+	if(lockMass[1] == 1){
+		lockMass<-lockMass[3:length(lockMass)]
+	}
+	lockMass<-matrix(lockMass, ncol=2, byrow=TRUE)
+	if((lockMass[nrow(lockMass),2]+2) > length(ob@scanindex)){
+		lockMass<-lockMass[1:(nrow(lockMass)-1),]
+	} ## remove the last lock mass scan if it's at the end of the run
+	
+	add<-0
+	arrMax<-length(arr[1,,1])
+	scanIx<-integer(length(arr[1,1,]))
+	for(i in 1:length(object@scanindex)){
+#		if((i+add) > length(object@scanindex)){
+#			break
+#		}
+		scan<-getScan(object, i)
+		arr[1,,i+add]<- c(scan[,"mz"], rep(NA, (arrMax-length(scan[,"mz"])) ))
+		arr[2,,i+add]<- c(scan[,"intensity"], rep(NA, (arrMax-length(scan[,"intensity"])) ))
+		scanIx[(i+add)+1]<- (scanIx[(i+add)])+nrow(scan)
+		##proably going to need a cut at the end of scanIx +1 problem
+		
+		if(any(i == lockMass[,1])){
+			arr[1,,i+1+add]<- c(scan[,"mz"], rep(NA, (arrMax-length(scan[,"mz"])) ))
+			arr[2,,i+1+add]<- c(scan[,"intensity"], rep(NA, (arrMax-length(scan[,"intensity"])) ))
+			scanIx[(i+add)+2]<- (scanIx[1+i+add])+nrow(scan)
+			
+			scan<-getScan(object, i+1)
+			arr[1,,i+2+add]<- c(scan[,"mz"], rep(NA, (arrMax-length(scan[,"mz"])) ))
+			arr[2,,i+2+add]<- c(scan[,"intensity"], rep(NA, (arrMax-length(scan[,"intensity"])) ))
+			scanIx[(i+add)+3]<- (scanIx[(i+2)+add])+nrow(scan)
+			
+			add<-add+2
+		}
+	}
+
+	NAidx<-is.na(arr[1,,])
+	ob@env$mz<-as.numeric(arr[1,,][!NAidx])
+	ob@env$intensity<-as.numeric(arr[2,,][!NAidx])
+	##remake scanindex
+#	scanInx<- as.integer(apply(arr[1,,], 2, function(x){
+#		inx<-is.na(x)
+#		length(x[!inx]) ## need to add these length together
+#	}))
+	ob@scanindex<-as.integer(scanIx)
+	ob@scantime <- sapply(1:length(ob@scanindex), function(x, time){ 
+		time*x
+	}, mean(diff(object@scantime)))
+	ob<-remakeTIC(object) ## remake TIC
+
+	return(ob)
+})
+
+remakeTIC<-function(object){
+	for(i in 1:length(object@scanindex)){
+		object@tic[i]<-sum(getScan(object, i)[,"intensity"])
+	}
+	return(object)
+}

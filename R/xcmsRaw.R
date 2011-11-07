@@ -8,26 +8,35 @@ xcmsRaw <- function(filename, profstep = 1, profmethod = "bin",
 
     if (!file.exists(filename)) stop("File ",filename, " not exists. \n"   )
 
-    mz <- openMSfile(filename)
-    rawdata <- mzRRawData(mz)
-    if ( includeMSn ) {
-      rawdataMSn <- mzRRawDataMSn(mz)
-    }    
+    if (netCDFIsFile(filename)) {
+      if (includeMSn) {
+        warning("Reading of MSn spectra for NetCDF not supported")
+      }
+      
+      cdf <- netCDFOpen(filename)
+      if (!is.null(attr(cdf, "errortext")))
+        stop(attr(cdf, "errortext"))
+        on.exit(netCDFClose(cdf))
+      rawdata <- netCDFRawData(cdf)
+    } else if (rampIsFile(filename)) {
+      
+      rampid <- rampOpen(filename)
+      if (rampid < 0)
+        stop("Could not open mzXML/mzData/mzML file")
+      on.exit(rampClose(rampid))
 
-## if (rampIsFile(filename)) {      
-##       rampid <- rampOpen(filename)
-##         if (rampid < 0)
-##             stop("Couldn't open mzXML/mzData file")
-##         on.exit(rampClose(rampid))
-##         rawdata <- rampRawData(rampid)
+      mz <- openMSfile(filename)
+      rawdata <- mzRRawData(mz)
 
-##         if ( includeMSn ) {
-##             rawdataMSn <- rampRawDataMSn(rampid)
-##         }
-
-##     } else
-##         stop("Couldn't determine file type")
-
+      rawdata <- rampRawData(rampid)
+      
+      if ( includeMSn ) {
+        rawdataMSn <- mzRRawDataMSn(mz)
+      }      
+    } else {
+      stop("Could not determine file type")
+    }
+    
     rtdiff <- diff(rawdata$rt)
     if (any(rtdiff == 0))
        warning("There are identical scantimes.")
@@ -251,118 +260,118 @@ setMethod("getScan", "xcmsRaw", function(object, scan, mzrange = numeric()) {
     invisible(points)
 })
 
-setGeneric("getMsnScan", function(object, ...) standardGeneric("getMsnScan"))
+## setGeneric("getMsnScan", function(object, ...) standardGeneric("getMsnScan"))
 
-setMethod("getMsnScan", "xcmsRaw", function(object, scanLevel = 2, ms1Rt = -1, parentMzs = 0,
-                       precision=1, userMsnIndex=NULL)
-{
-    if (scanLevel<1)
-    {
-        warning("Exit: Do you really want to have a ms ",scanLevel," Scan?")
-        return(NULL)
-    }
+## setMethod("getMsnScan", "xcmsRaw", function(object, scanLevel = 2, ms1Rt = -1, parentMzs = 0,
+##                        precision=1, userMsnIndex=NULL)
+## {
+##     if (scanLevel<1)
+##     {
+##         warning("Exit: Do you really want to have a ms ",scanLevel," Scan?")
+##         return(NULL)
+##     }
 
-    if (is.null(userMsnIndex)) { ## if the User wants to address the data via xcms@msnScanindex
-        nxcms <- new("xcmsRaw"); # creates a new empty xcmsraw-object
+##     if (is.null(userMsnIndex)) { ## if the User wants to address the data via xcms@msnScanindex
+##         nxcms <- new("xcmsRaw"); # creates a new empty xcmsraw-object
 
-        nxcms@scantime <- ms1Rt
-        nxcms@env$mz        <- object@env$msnMz[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
-        nxcms@env$intensity <- object@env$msnIntensity[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
+##         nxcms@scantime <- ms1Rt
+##         nxcms@env$mz        <- object@env$msnMz[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
+##         nxcms@env$intensity <- object@env$msnIntensity[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
 
-        return(nxcms);
-    }
+##         return(nxcms);
+##     }
 
-    if (parentMzs[1]==0)
-        parentMzs <- rep(0,scanLevel-1)
+##     if (parentMzs[1]==0)
+##         parentMzs <- rep(0,scanLevel-1)
 
-    ## using a zero-vector if none is given
-    wasonlyone=TRUE;
-    if (ms1Rt < object@scantime[1]) {
-        warning("Exit: ms1Rt is smaller than smallest ms1Rt in the object")
-        return(NULL)
-    }
-    ms1ind <- max(which(object@scantime <= ms1Rt))
-    if (scanLevel==1) { # in this case just the ms1schan of this rt will be returned
-        nxcms <- new("xcmsRaw"); # creates a new empty xcmsraw-object
+##     ## using a zero-vector if none is given
+##     wasonlyone=TRUE;
+##     if (ms1Rt < object@scantime[1]) {
+##         warning("Exit: ms1Rt is smaller than smallest ms1Rt in the object")
+##         return(NULL)
+##     }
+##     ms1ind <- max(which(object@scantime <= ms1Rt))
+##     if (scanLevel==1) { # in this case just the ms1schan of this rt will be returned
+##         nxcms <- new("xcmsRaw"); # creates a new empty xcmsraw-object
 
-        nxcms@scantime <- ms1Rt
-        nxcms@env$mz        <- object@env$mz[(object@scanindex[ms1ind]+1):(object@scanindex[ms1ind+1])]
-        nxcms@env$intensity <- object@env$intensity[(object@scanindex[ms1ind]+1):(object@scanindex[ms1ind+1])]
+##         nxcms@scantime <- ms1Rt
+##         nxcms@env$mz        <- object@env$mz[(object@scanindex[ms1ind]+1):(object@scanindex[ms1ind+1])]
+##         nxcms@env$intensity <- object@env$intensity[(object@scanindex[ms1ind]+1):(object@scanindex[ms1ind+1])]
 
-        return(nxcms);
-    }
+##         return(nxcms);
+##     }
 
-    if (is.null(object@env$msnMz)) {
-        warning("Exit: There are no MSnScans in this object.")
-        return(NULL)
-    }
+##     if (is.null(object@env$msnMz)) {
+##         warning("Exit: There are no MSnScans in this object.")
+##         return(NULL)
+##     }
 
-    ##finding the peak in the s1 the user wants to have the msnpath from (searching in the ms2parentRtlist):
-    ms2s <- which((object@msnRt >= ms1Rt)  &
-                  (object@msnLevel == 2) &
-                  (object@msnRt <= object@scantime[ms1ind+1]))
-    if (length(ms2s) == 0)
-    {
-        warning("Exit: There is no ms2scan in this Rt-Range!")
-        return(NULL)
-    }
-    ##cat("1> ",ms2s,"\n")
-    if (length(ms2s) > 1)
-    {
-        if (parentMzs[1] == 0)  # more than one ms2scan aviable but no mzvalues given
-            warning("More than one ms2scan available but no mz-parameters given! using first scan")
-        wasonlyone=FALSE;
-        diffe <- abs(object@msnPrecursorMz[ms2s] - parentMzs[1])
-        msn <- ms2s[min(which(diffe == min(diffe)))] # The PArent-Rt of this ms2index ist closest to the wanted value
-    } else {
-        msn <- ms2s; # there is only one ms2scan in this ms1range so use this
-    }
-    if ((parentMzs[1] != 0) & (abs(object@msnPrecursorMz[msn] - parentMzs[1]) > 1)) {
-        warning("No ms2scan parent m/z is close enought to the requested value! using closest:",object@msnPrecursorMz[msn])
-    }
-    msnRt <- object@msnRt[msn]
-    ##cat("3> ",msnRt,"\n")
-    if (scanLevel > 2) {
-        for (a in 3:scanLevel) {
-            msns <- which((object@msnRt >= msnRt) &
-                          (object@msnLevel == a) &
-                          (object@msnRt <= object@scantime[ms1ind+1]))
-            ##cat("4> ",ms2s,"\n")
-            if (length(msns)==0) {
-                warning("Exit: There is no ms",a,"scan in this Rt-Range!")
-                return(NULL)
-            }
-            if (length(msns)>1) {
-                wasonlyone=FALSE;
-                if ((length(parentMzs)< a-1) | (parentMzs[a-1] == 0)) { # more than one ms2scan aviable but no mzvalues given
-                    warning("More than one ms",a,"scan available but no mzdata given! using first scan")
-                    msn <- msns[1];
-                } else {
-                    diffe <- abs(object@msnPrecursorMz[msns] - parentMzs[a-1])
-                    msn <- msns[min(which(diffe == min(diffe)))]
-                }
-            } else {
-                msn <- msns; # there is only one ms[n-1]scan in this ms[n]ramge so use this
-            }
-            if (length(parentMzs)>=(a-1)&(parentMzs[1]!=0)) {
-                if (abs(object@msnPrecursorMz[msn] - parentMzs[a-1]) > 1) {
-                    warning("No ms",scanLevel,"scan parent m/z is close enought to the requested value! using closest: ", object@msnPrecursorMz[msn])
-                }
-            }
-            msnRt <- object@msnRt[msn]
-        }
-    }
-    if (wasonlyone) {
-        message("Note: There was only one ms",scanLevel,"Scan for the given MS1rt.\n", sep="")
-    }
-    nxcms <- new("xcmsRaw"); # creates a new empty xcmsraw-object
+##     ##finding the peak in the s1 the user wants to have the msnpath from (searching in the ms2parentRtlist):
+##     ms2s <- which((object@msnRt >= ms1Rt)  &
+##                   (object@msnLevel == 2) &
+##                   (object@msnRt <= object@scantime[ms1ind+1]))
+##     if (length(ms2s) == 0)
+##     {
+##         warning("Exit: There is no ms2scan in this Rt-Range!")
+##         return(NULL)
+##     }
+##     ##cat("1> ",ms2s,"\n")
+##     if (length(ms2s) > 1)
+##     {
+##         if (parentMzs[1] == 0)  # more than one ms2scan aviable but no mzvalues given
+##             warning("More than one ms2scan available but no mz-parameters given! using first scan")
+##         wasonlyone=FALSE;
+##         diffe <- abs(object@msnPrecursorMz[ms2s] - parentMzs[1])
+##         msn <- ms2s[min(which(diffe == min(diffe)))] # The PArent-Rt of this ms2index ist closest to the wanted value
+##     } else {
+##         msn <- ms2s; # there is only one ms2scan in this ms1range so use this
+##     }
+##     if ((parentMzs[1] != 0) & (abs(object@msnPrecursorMz[msn] - parentMzs[1]) > 1)) {
+##         warning("No ms2scan parent m/z is close enought to the requested value! using closest:",object@msnPrecursorMz[msn])
+##     }
+##     msnRt <- object@msnRt[msn]
+##     ##cat("3> ",msnRt,"\n")
+##     if (scanLevel > 2) {
+##         for (a in 3:scanLevel) {
+##             msns <- which((object@msnRt >= msnRt) &
+##                           (object@msnLevel == a) &
+##                           (object@msnRt <= object@scantime[ms1ind+1]))
+##             ##cat("4> ",ms2s,"\n")
+##             if (length(msns)==0) {
+##                 warning("Exit: There is no ms",a,"scan in this Rt-Range!")
+##                 return(NULL)
+##             }
+##             if (length(msns)>1) {
+##                 wasonlyone=FALSE;
+##                 if ((length(parentMzs)< a-1) | (parentMzs[a-1] == 0)) { # more than one ms2scan aviable but no mzvalues given
+##                     warning("More than one ms",a,"scan available but no mzdata given! using first scan")
+##                     msn <- msns[1];
+##                 } else {
+##                     diffe <- abs(object@msnPrecursorMz[msns] - parentMzs[a-1])
+##                     msn <- msns[min(which(diffe == min(diffe)))]
+##                 }
+##             } else {
+##                 msn <- msns; # there is only one ms[n-1]scan in this ms[n]ramge so use this
+##             }
+##             if (length(parentMzs)>=(a-1)&(parentMzs[1]!=0)) {
+##                 if (abs(object@msnPrecursorMz[msn] - parentMzs[a-1]) > 1) {
+##                     warning("No ms",scanLevel,"scan parent m/z is close enought to the requested value! using closest: ", object@msnPrecursorMz[msn])
+##                 }
+##             }
+##             msnRt <- object@msnRt[msn]
+##         }
+##     }
+##     if (wasonlyone) {
+##         message("Note: There was only one ms",scanLevel,"Scan for the given MS1rt.\n", sep="")
+##     }
+##     nxcms <- new("xcmsRaw"); # creates a new empty xcmsraw-object
 
-    nxcms@scantime <- msnRt
-    nxcms@env$mz        <- object@env$msnMz[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
-    nxcms@env$intensity <- object@env$msnIntensity[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
+##     nxcms@scantime <- msnRt
+##     nxcms@env$mz        <- object@env$msnMz[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
+##     nxcms@env$intensity <- object@env$msnIntensity[(object@msnScanindex[msn]+1):(object@msnScanindex[msn+1])]
 
-    return(nxcms);
-})
+##     return(nxcms);
+## })
 
 setGeneric("getSpec", function(object, ...) standardGeneric("getSpec"))
 
@@ -1282,7 +1291,14 @@ setMethod("getPeaks", "xcmsRaw", function(object, peakrange, step = 0.1) {
         iymax <- which.max(ymax)
 
         pwid <- diff(stime[iret])/diff(iret)
-        rmat[i,1] <- weighted.mean(mass[imz[1]:imz[2]], rowSums(ymat))
+        
+        rosm <- rowSums(ymat)
+        limz <- length(imz[1]:imz[2])
+        if (length(rosm) != limz) { ## that happens for some reason
+                warning("weighted.mean  : x and w must have the same length \n")
+                rosm <- rep(1, limz)  ## fallback to mean
+        }    
+        rmat[i,1] <- weighted.mean(mass[imz[1]:imz[2]], rosm)
         if (is.nan(rmat[i,1]) || is.na(rmat[i,1])) ##  R2.11 :  weighted.mean()  results in NA (not NaN) for zero weights
             rmat[i,1] <- mean(peakrange[i,1:2])
 
@@ -1726,6 +1742,52 @@ setMethod("findmzROI", "xcmsRaw", function(object, mzrange=c(0.0,0.0), scanrange
 })
 
 
+setGeneric("findPeaks.massifquant", function(object, ...) standardGeneric("findPeaks.massifquant"))
+
+
+setMethod("findPeaks.massifquant", "xcmsRaw", function(object, mzrange=c(0.0,0.0),
+            scanrange=c(1,length(object@scantime)), minIntensity = 6400,
+            minCentroids = 12, consecMissedLim = 2, criticalVal = 1.7321, ppm = 10,  segs = 1, scanBack = 1, mzdiff=-0.001){
+
+    ##cat("\nDetecting features with massifquant.  "); flush.console();
+
+    scanrange[1] <- max(1,scanrange[1])
+    scanrange[2] <- min(length(object@scantime),scanrange[2])
+    
+    ## var type checking
+    if (!is.double(object@env$mz))  object@env$mz <- as.double(object@env$mz)
+    if (!is.double(object@env$intensity)) object@env$intensity <- as.double(object@env$intensity)
+    if (!is.integer(object@scanindex)) object@scanindex <- as.integer(object@scanindex)
+    if (!is.double(object@scantime)) object@scantime <- as.double(object@scantime)
+
+    basenames <- c("mz","mzmin","mzmax","rt","rtmin","rtmax","into","maxo") # ,"sn") ?
+
+    peaklist <- .Call("massifquant", object@env$mz,object@env$intensity,object@scanindex, object@scantime,
+        as.double(mzrange), as.integer(scanrange), as.integer(length(object@scantime)),
+        as.double(minIntensity),as.integer(minCentroids),as.double(consecMissedLim),
+        as.double(ppm), as.double(criticalVal), as.integer(segs), as.integer(scanBack), PACKAGE ='xcms' )
+
+    if (length(peaklist) == 0) {
+        cat("\nNo peaks found !\n")
+            nopeaks <- new("xcmsPeaks", matrix(nrow=0, ncol=length(basenames)))
+            colnames(nopeaks) <- basenames
+            return(invisible(nopeaks))
+    }
+
+    p <- t(sapply(peaklist, unlist))
+
+    colnames(p) <- basenames
+
+    uorder <- order(p[,"into"], decreasing=TRUE)
+    pm <- as.matrix(p[,c("mzmin","mzmax","rtmin","rtmax"),drop=FALSE])
+    uindex <- rectUnique(pm,uorder,mzdiff,ydiff = -0.00001) ## allow adjacent peaks
+    pr <- p[uindex,,drop=FALSE]
+    cat("\n",dim(pr)[1]," Peaks.\n")
+
+    invisible(new("xcmsPeaks", pr))
+})
+
+
 setGeneric("isCentroided", function(object, ...) standardGeneric("isCentroided"))
 
 setMethod("isCentroided", "xcmsRaw", function(object){
@@ -1735,200 +1797,6 @@ setMethod("isCentroided", "xcmsRaw", function(object){
         TRUE
     }
 })
-
-sequenceMz <- function(dat) {
-    for (p in 1:dim(dat)[1] ){ # makes the index for the scan
-        seq<-seq(from=dat[p,"from"], to=dat[p,"to"])
-        if(p == 1){
-            seqInd<-seq
-        } else {
-            seqInd<-c(seqInd, seq)
-        }
-    }
-    return(seqInd)
-}
-
-if (!isGeneric("collect") )
-    setGeneric("collect", function(object, ...) standardGeneric("collect"))
-
-setMethod("collect", "xcmsRaw", function(object, rtU, mzU=0, sn=5, uCE=-1, check=FALSE, fragments=TRUE, ...) {
-    warning("This method will be removed in the next releases\n")
-	for(k in 1:length(object@msnScanindex)){
-        if (k ==1){
-            from<-object@msnScanindex[k]
-            to<-object@msnScanindex[k+1]-1
-            mat<-c(from, to)
-        }else if (k==length(object@msnScanindex)){
-            from<-object@msnScanindex[k]
-            to<-length(object@env$msnMz)
-            mat<-rbind(mat, c(from, to))
-        } else{
-            from<-object@msnScanindex[k]
-            to<-object@msnScanindex[k+1]-1
-            mat<-rbind(mat, c(from, to))
-        }
-    }
-
-    uniMZ<-unique(object@msnPrecursorMz)
-    ref<-1
-
-    run<-vector("list", 0)
-    for(i in 1:length(uniMZ)){
-	cat(paste(uniMZ[i], " ", sep=""))
-	if(mzU==0){
-	    mzU<-uniMZ[i]
-	    check<-TRUE
-	}
-
-	uniCE<-unique(object@msnCollisionEnergy[object@msnPrecursorMz == mzU])
-	for (o in 1:length(uniCE)){
-	    if(uCE == -1){
-	        uCE<-uniCE[o]
-	        check<-TRUE
-	    }
-        tempIndex<-which(object@msnPrecursorMz == mzU & object@msnCollisionEnergy == uCE)
-	    scanIX<-cbind(object@msnPrecursorMz[tempIndex], mat[tempIndex,2], mat[tempIndex,1], 
-						object@msnRt[tempIndex], object@msnCollisionEnergy[tempIndex])
-        colnames(scanIX)<-c("preMZ", "to", "from", "rt", "collisionEnergy")
-	    if(!is.matrix(scanIX)){
-	        tempNames<-names(scanIX)
-	        scanIX<-matrix(scanIX, ncol=5)
-	        colnames(scanIX)<-tempNames
-	    }
-	    rthold<-min(scanIX[,"rt"])
-
-            if(dim(scanIX)[1] == 1){ ##do we need rt time window?
-                dat<-scanIX
-                seqInd<-sequenceMz(dat)
-                scan<-matrix(c(object@env$msnMz[seqInd], object@env$msnIntensity[seqInd]), ncol=2)
-                colnames(scan)<-c("mz", "intensity")
-                scan<-scan[order(scan[,"mz"], scan[,"intensity"]),, drop=FALSE]
-                scan[,"intensity"]<-scan[,"intensity"]/max(scan[,"intensity"])*100
-                #spectab<-specPeaks(scan, sn=sn) ## used to remove noise
-                run[[ref]]<-specPeaks(scan, sn=sn)
-                #run[[ref]]<-deisotopeNclean(spectab) ##Just what it says. could be better
-
-                if(!exists("runinfo") ){ # to get over the null object issue
-                    runinfo<-c(mzU, min(dat[,"rt"]), max(dat[,"rt"]), ref, uCE)
-                } else {
-                    runinfo<-rbind(runinfo, c(mzU, min(dat[,"rt"]), max(dat[,"rt"]), ref, uCE))
-                }
-                ref<-ref+1
-            }else if (dim(scanIX)[1] >1){
-	        while(rthold <= max(scanIX[,"rt"])){
-	            ahead<-scanIX[which.max(scanIX[,"rt"]>rthold),"rt"]+rtU
-	            scanIndex<-scanIX[,"rt"] <= ahead & scanIX[, "rt"] > rthold
-                    if (!is.matrix(scanIX[scanIndex,])){ # if dim==[1,8] it becomes a vector so check for it
-                        dat<-matrix(scanIX[scanIndex,], ncol=5)
-                        colnames(dat)<-names(scanIX[scanIndex,])
-                    }else {
-                        dat<-scanIX[scanIndex,]
-                    }
-                    if(dim(dat)[1] < 1 ){
-                        rthold<-ahead+rthold
-                        next
-                    }
-                    seqInd<-sequenceMz(dat)
-                    scan<-matrix(c(object@env$msnMz[seqInd], object@env$msnIntensity[seqInd]), ncol=2)
-                    colnames(scan)<-c("mz", "intensity")
-                    scan<-scan[order(scan[,"mz"], scan[,"intensity"]),, drop=FALSE]
-                    scan[,"intensity"]<-scan[,"intensity"]/max(scan[,"intensity"])*100
-##normilise the intensity for signal to noise ration.
-                    #spectab<-specPeaks(scan, sn=sn) # used to remove noise
-                    run[[ref]]<-specPeaks(scan, sn=sn)
-                    #run[[ref]]<-deisotopeNclean(spectab)
-                    rthold<-max(dat[,"rt"])
-
-                    if(!exists("runinfo") ){ # to get over the null object issue
-                        runinfo<-c(mzU, min(dat[,"rt"]), max(dat[,"rt"]), ref, uCE)
-                    } else {
-                        runinfo<-rbind(runinfo, c(mzU, min(dat[,"rt"]), max(dat[,"rt"]), ref, uCE))
-                    }
-                    ref<-ref+1
-                }
-            }
-        }
-
-		if(!exists("runinfoFinal")){
-	    	runinfoFinal<-runinfo
-		} else {
-	    	runinfoFinal<-rbind(runinfoFinal, runinfo)
-		}
-		if(check==TRUE) {
-	    	mzU<-0
-	    	uCE<- -1
-		}
-    }
-
-    colnames(runinfoFinal)<-c("preMZ", "rtmin", "rtmax", "ref", "CollisionEnergy")
-    rownames(runinfoFinal)<-rep("", dim(runinfoFinal)[1]) #just to get rid of the added row names which aren't needed.
-    cat("\nCalculating accurate mass...")
-    if(fragments == TRUE){
-        frag<-new("xcmsFragments")
-    }
-    if(length(run)== dim(runinfoFinal)[1] ){## some odd stuff happens with the matrix duplicates are made
-		frag@MS2spec<-run## So we check for it
-        frag@specinfo<-runinfoFinal
-    } else {
-		dup<-duplicated(runinfoFinal)
-		if(dim(runinfoFinal[!dup,])[1] == length(run)){
-            frag@specinfo<-runinfoFinal[!dup,]
-            frag@MS2spec<-run
-		} else{
-	    	cat(paste("Error: Method \'collect\' has failed. \n", sep="")) ##should never be seen :D just having fun
-		}
-    }
-
-    cat(paste("\n", sep=""))
-	if(length(object@env$mz) >1){
-		accurateMZ<-getMZ(object, frag@specinfo)
-	}else{
-		accurateMZ<-as.numeric(frag@specinfo[,1])
-	}
-    
-    frag@specinfo<-cbind(frag@specinfo[,1], accurateMZ, frag@specinfo[,2:5])
-    colnames(frag@specinfo)<-c("preMZ", "AccMZ", "rtmin", "rtmax", "ref", "CollisionEnergy")
-    if(fragments == TRUE){
-        return(frag)
-    } else {
-        MSMS<-list()
-        MSMS[[1]]<-frag@specinfo
-        MSMS[[2]]<-frag@MS2spec
-        return(MSMS)
-    }
-})
-
-if (!isGeneric("getMZ") )
-    setGeneric("getMZ", function(object, ...) standardGeneric("getMZ"))
-
-setMethod("getMZ", "xcmsRaw", function(object, specinfo,  ...) {
-	warning("This method will be removed in the next releases\n")
-    for(i in 1:dim(specinfo)[1]){
-		A<-which(specinfo[i,"rtmin"] > object@scantime)
-		if(specinfo[i,"rtmax"] > object@scantime[length(object@scantime)]){
-			B<-length(object@scantime)
-		} else {
-				B<-which(specinfo[i,"rtmax"] < object@scantime)
-		}
-
-		massInd<-object@scanindex[max(A,na.rm=TRUE):min(B,na.rm=TRUE)]
-		AccuMass<-object@env$mz[massInd[1]:massInd[length(massInd)]]
-		AccuIntensity<-object@env$intensity[massInd[1]:massInd[length(massInd)]]
-
-
-		index<-which(AccuMass > specinfo[i, "preMZ"]-0.25 & AccuMass < specinfo[i, "preMZ"]+0.25)
-		#if (length(index) == 0){ # we should probably check for nothing found :wq
-
-			#}
-		if(!exists("accurate")){
-			accurate<-weighted.mean(AccuMass[index], AccuIntensity[index], na.rm = TRUE)
-		}else{
-			accurate<-c(accurate, weighted.mean(AccuMass[index], AccuIntensity[index], na.rm=TRUE))
-		}
-    }
-    return(accurate)
-})
-
 
 split.xcmsRaw <- function(x, f, drop = TRUE, ...)
 {
